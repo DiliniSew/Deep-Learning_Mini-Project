@@ -95,7 +95,10 @@ st.markdown(
 # TITLE
 # ==========================================
 
-st.markdown('<div class="main-title">CYBERVISION AI</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="main-title">CYBERVISION AI</div>',
+    unsafe_allow_html=True
+)
 
 st.markdown(
     '<div class="subtitle">Futuristic Age & Gender Detection System</div>',
@@ -127,8 +130,13 @@ face_cascade = cv2.CascadeClassifier(
 
 def preprocess_face(face):
 
+    # Change size if your model
+    # was trained on another size
+
     face = cv2.resize(face, (224, 224))
+
     face = face.astype("float32") / 255.0
+
     face = np.expand_dims(face, axis=0)
 
     return face
@@ -137,36 +145,59 @@ def preprocess_face(face):
 # PREDICTION FUNCTION
 # ==========================================
 
-def predict_age_gender(face):
+def get_age_range(age):
+    """Converts a specific age integer into a realistic range buffer."""
+    # Ensure we don't get negative ages for toddlers
+    lower_bound = max(0, age - 3)
+    upper_bound = age + 3
+    
+    return f"{lower_bound}-{upper_bound}"
 
+    # ALTERNATIVE: Fixed Buckets (Uncomment if you prefer fixed brackets)
+    # if age < 13: return "0-12"
+    # elif age < 20: return "13-19"
+    # elif age < 30: return "20-29"
+    # elif age < 45: return "30-44"
+    # elif age < 60: return "45-59"
+    # else: return "60+"
+
+def predict_age_gender(face):
     processed = preprocess_face(face)
 
-    # YOUR MODEL RETURNS TWO OUTPUTS
-    age_pred, gender_pred = model.predict(processed, verbose=0)
+    # Model returns two outputs
+    age_pred, gender_pred = model.predict(
+        processed,
+        verbose=0
+    )
 
-    age = int(age_pred[0][0])
+    # 1. Get the raw age prediction
+    raw_age = int(age_pred[0][0])
+    
+    # 2. Convert it to a range string
+    age_range = get_age_range(raw_age)
 
     gender_prob = gender_pred[0][0]
 
-    # YOUR MODEL LOGIC:
     # 1 = Female
     # 0 = Male
-
     gender = "Female" if gender_prob > 0.5 else "Male"
 
-    confidence = float(max(gender_prob, 1 - gender_prob))
-
-    return age, gender, confidence
+    return age_range, gender
 
 # ==========================================
 # PROCESS FRAME
 # ==========================================
 
-def process_frame(frame):
+def process_frame(frame, from_webcam=False):
 
-    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    # Fix blue color issue
 
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    if from_webcam:
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    else:
+        rgb = frame.copy()
+
+    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
 
     faces = face_cascade.detectMultiScale(
         gray,
@@ -181,13 +212,19 @@ def process_frame(frame):
 
         face = rgb[y:y+h, x:x+w]
 
-        age, gender, conf = predict_age_gender(face)
+        age, gender = predict_age_gender(face)
 
-        results.append((age, gender, conf))
+        results.append((age, gender))
 
         color = (0, 255, 255)
 
-        cv2.rectangle(rgb, (x, y), (x+w, y+h), color, 3)
+        cv2.rectangle(
+            rgb,
+            (x, y),
+            (x+w, y+h),
+            color,
+            3
+        )
 
         label = f"{gender} | {age} yrs"
 
@@ -224,7 +261,10 @@ option = st.sidebar.radio(
 
 if option == "🎥 Live Webcam Detection":
 
-    st.markdown('<div class="glass">', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="glass">',
+        unsafe_allow_html=True
+    )
 
     st.subheader("🎥 Real-Time Face Detection")
 
@@ -236,18 +276,30 @@ if option == "🎥 Live Webcam Detection":
 
             img = frame.to_ndarray(format="bgr24")
 
-            processed, _ = process_frame(img)
+            processed, _ = process_frame(
+                img,
+                from_webcam=True
+            )
 
-            return av.VideoFrame.from_ndarray(processed, format="rgb24")
+            return av.VideoFrame.from_ndarray(
+                processed,
+                format="rgb24"
+            )
 
     webrtc_streamer(
         key="live-detection",
         video_processor_factory=VideoProcessor,
-        media_stream_constraints={"video": True, "audio": False},
+        media_stream_constraints={
+            "video": True,
+            "audio": False
+        },
         async_processing=True
     )
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown(
+        '</div>',
+        unsafe_allow_html=True
+    )
 
 # ==========================================
 # CAPTURE FROM WEBCAM
@@ -255,41 +307,57 @@ if option == "🎥 Live Webcam Detection":
 
 elif option == "📸 Capture From Webcam":
 
-    st.markdown('<div class="glass">', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="glass">',
+        unsafe_allow_html=True
+    )
 
     st.subheader("📸 Capture & Analyze")
+
+    result_container = st.empty()
 
     captured_image = st.camera_input("Take a photo")
 
     if captured_image:
 
+        result_container.empty()
+
         image = Image.open(captured_image)
 
         image_np = np.array(image)
 
-        processed_image, results = process_frame(image_np)
+        processed_image, results = process_frame(
+            image_np
+        )
 
-        st.image(processed_image, use_container_width=True)
+        st.image(
+            processed_image,
+            use_container_width=True
+        )
 
         if results:
 
-            for age, gender, conf in results:
+            with result_container.container():
 
-                st.markdown(
-                    f"""
-                    <div class="prediction-box">
-                        <div class="metric">{gender}</div>
-                        <h2>{age} Years Old</h2>
-                        <p>Confidence: {conf:.2f}</p>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+                for age, gender in results:
+
+                    st.markdown(
+                        f"""
+                        <div class="prediction-box">
+                            <div class="metric">{gender}</div>
+                            <h2>{age} Years Old</h2>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
 
         else:
             st.warning("No face detected")
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown(
+        '</div>',
+        unsafe_allow_html=True
+    )
 
 # ==========================================
 # UPLOAD IMAGE
@@ -297,9 +365,14 @@ elif option == "📸 Capture From Webcam":
 
 elif option == "📂 Upload Image":
 
-    st.markdown('<div class="glass">', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="glass">',
+        unsafe_allow_html=True
+    )
 
     st.subheader("📂 Upload Image")
+
+    result_container = st.empty()
 
     uploaded_file = st.file_uploader(
         "Upload an image",
@@ -308,33 +381,44 @@ elif option == "📂 Upload Image":
 
     if uploaded_file:
 
+        result_container.empty()
+
         image = Image.open(uploaded_file)
 
         image_np = np.array(image)
 
-        processed_image, results = process_frame(image_np)
+        processed_image, results = process_frame(
+            image_np
+        )
 
-        st.image(processed_image, use_container_width=True)
+        st.image(
+            processed_image,
+            use_container_width=True
+        )
 
         if results:
 
-            for age, gender, conf in results:
+            with result_container.container():
 
-                st.markdown(
-                    f"""
-                    <div class="prediction-box">
-                        <div class="metric">{gender}</div>
-                        <h2>{age} Years Old</h2>
-                        <p>Confidence: {conf:.2f}</p>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+                for age, gender in results:
+
+                    st.markdown(
+                        f"""
+                        <div class="prediction-box">
+                            <div class="metric">{gender}</div>
+                            <h2>{age} Years Old</h2>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
 
         else:
             st.warning("No face detected")
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown(
+        '</div>',
+        unsafe_allow_html=True
+    )
 
 # ==========================================
 # FOOTER
